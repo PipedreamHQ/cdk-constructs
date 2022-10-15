@@ -1,0 +1,10 @@
+{
+  "name": "ddb-stream-to-sns",
+  "version": "1.0.0",
+  "description": "Lambda to send DDB records to SNS",
+  "main": "index.mjs",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.1231.0"
+  }
+}
