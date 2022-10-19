@@ -29,7 +29,7 @@ export class DDBDeadMansSwitch extends Stack {
 ```typescript
 import { Stack, StackProps } from "aws-cdk-lib";
 import { Construct } from "constructs" 
-import { DDBDeletedItemsToHTTPS } from "@pipedream/cdk-constructs"
+import { Growthbook } from "@pipedream/cdk-constructs"
 
 export class GrowthbookStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
