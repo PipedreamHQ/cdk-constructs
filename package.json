@@ -1,6 +1,6 @@
 {
   "name": "@pipedream/cdk-constructs",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AWS CDK constructs",
   "main": "index.js",
   "repository": "git@github.com:PipedreamHQ/cdk-constructs.git",

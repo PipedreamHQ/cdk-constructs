@@ -22,6 +22,42 @@ export class DDBDeadMansSwitch extends Stack {
 }
 ```
 
+### Growthbook
+
+[Growthbook](http://growthbook.com/) provides an open-source, Bayesian experimentation platform. We use Growthbook at Pipedream and have released the ECS deployment we use as a CDK construct:
+
+```typescript
+import { Stack, StackProps } from "aws-cdk-lib";
+import { Construct } from "constructs" 
+import { DDBDeletedItemsToHTTPS } from "@pipedream/cdk-constructs"
+
+export class GrowthbookStack extends Stack {
+  constructor(scope: Construct, id: string, props?: StackProps) {
+    super(scope, id, props);
+
+    new Growthbook(this, 'Growthbook', {
+      hostedZoneName: "yourdomain.com",
+      growthbookHost: "growthbook",
+      emailHost: "smtp.sendgrid.com",
+      emailPort: "587",
+      emailFromAddress: "noreply@yourdomain.com" 
+    });
+  }
+}
+```
+
+This stack assumes you have your own hosted zone in Route53 where DNS records can be created, and a MongoDB cluster accessible from the Growthbook ECS instance. [See the Growthbook docs](https://docs.growthbook.io/self-host) for more information.
+
+The stack also pulls secrets from AWS Secrets Manager, and assumes the following secrets have been created prior to creating the stack:
+
+```
+prod/mongo/secretMongoURI
+prod/mongo/secretJwtSecret
+prod/mongo/secretEncryptionKey
+prod/email/secretUsername
+prod/email/secretPassword
+```
+
 ## Useful commands
 
 - `npm run build` - Compile Typescript to JS

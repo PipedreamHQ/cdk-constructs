@@ -1,9 +1,15 @@
 import { 
+  aws_certificatemanager as acm,
   aws_dynamodb as ddb,
+  aws_ecs as ecs,
+  aws_ecs_patterns as ecsPatterns, 
+  aws_elasticloadbalancingv2 as elbv2,
   aws_iam as iam,
   aws_lambda as lambda,
   aws_logs as logs,
   aws_lambda_event_sources as eventsources,
+  aws_route53 as route53, 
+  aws_secretsmanager as secretsmanager,
   aws_sns as sns,
   Duration,
 } from "aws-cdk-lib"
@@ -76,5 +82,120 @@ export class DDBDeletedItemsToHTTPS extends Construct {
         statements: [snsPublishPolicy],
       }),
     );
+  }
+}
+  
+interface GrowthbookProps {
+  readonly hostedZoneName: string
+  readonly growthbookHost: string;
+  readonly emailHost: string;
+  readonly emailPort: string;
+  readonly emailFromAddress: string;
+}
+  
+export class Growthbook extends Construct {
+  constructor(scope: Construct, id: string, props: GrowthbookProps) {
+    super(scope, id)
+  
+    const { growthbookHost, hostedZoneName } = props
+  
+    const hostedZone = route53.HostedZone.fromLookup(this, 'Zone', { domainName: hostedZoneName });
+  
+    // Growthbook ECS service 
+    const domainName = `${growthbookHost}.${hostedZoneName}`
+    const certificate = new acm.DnsValidatedCertificate(this, "GrowthbookCertificate", {
+      domainName,
+      hostedZone,
+    })
+  
+    const loadBalancedFargateService = new ecsPatterns.ApplicationMultipleTargetGroupsFargateService(this, "GrowthbookService", {
+      cpu: 512,
+      desiredCount: 1,
+      loadBalancers: [
+        {
+          name: "GrowthbookLoadBalancer",
+          domainName,
+          domainZone: hostedZone,
+          listeners: [
+            { 
+              name: "growthbook-ui",
+              port: 443,
+              certificate,
+              protocol: elbv2.ApplicationProtocol.HTTPS,
+              sslPolicy: elbv2.SslPolicy.FORWARD_SECRECY_TLS12_RES_GCM,
+            },
+            { 
+              name: "growthbook-api",
+              port: 3100,
+              certificate,
+              protocol: elbv2.ApplicationProtocol.HTTPS,
+              sslPolicy: elbv2.SslPolicy.FORWARD_SECRECY_TLS12_RES_GCM,
+            }
+          ],
+          publicLoadBalancer: true,
+        }
+  
+      ],
+      memoryLimitMiB: 1024,
+      taskImageOptions: {
+        image: ecs.ContainerImage.fromRegistry("growthbook/growthbook:latest"),
+        environment: {
+          APP_ORIGIN: `https://${domainName}`,
+          API_HOST: `https://${domainName}:3100`,
+          NODE_ENV: "production",
+          EMAIL_ENABLED: "true",
+          EMAIL_HOST: props.emailHost,
+          EMAIL_PORT: props.emailPort,
+          EMAIL_FROM: props.emailFromAddress,
+        },
+        secrets: {
+          MONGODB_URI: ecs.Secret.fromSecretsManager(
+            secretsmanager.Secret.fromSecretNameV2(this, 'secretMongoURI', 'prod/mongo'),
+            'MONGODB_URI',
+          ),
+          JWT_SECRET: ecs.Secret.fromSecretsManager(
+            secretsmanager.Secret.fromSecretNameV2(this, 'secretJwtSecret', 'prod/mongo'),
+            'JWT_SECRET',
+          ),
+          ENCRYPTION_KEY: ecs.Secret.fromSecretsManager(
+            secretsmanager.Secret.fromSecretNameV2(this, 'secretEncryptionKey', 'prod/mongo'),
+            'ENCRYPTION_KEY',
+          ),
+          EMAIL_HOST_USER: ecs.Secret.fromSecretsManager(
+            secretsmanager.Secret.fromSecretNameV2(this, 'secretUsername', 'prod/email'),
+            'USER',
+          ),
+          EMAIL_HOST_PASSWORD: ecs.Secret.fromSecretsManager(
+            secretsmanager.Secret.fromSecretNameV2(this, 'secretPassword', 'prod/email'),
+            'PASSWORD',
+          ),
+        },
+        containerPorts: [3000, 3100]
+      },
+      serviceName: "growthbook",
+      targetGroups: [
+        {
+          containerPort: 3000,
+          listener: "growthbook-ui",
+        },
+        { 
+          containerPort: 3100,
+          listener: "growthbook-api",
+        }
+      ]
+    })
+  
+    const scalableTarget = loadBalancedFargateService.service.autoScaleTaskCount({
+      minCapacity: 1,
+      maxCapacity: 5,
+    });
+      
+    scalableTarget.scaleOnCpuUtilization('CpuScaling', {
+      targetUtilizationPercent: 50,
+    });
+      
+    scalableTarget.scaleOnMemoryUtilization('MemoryScaling', {
+      targetUtilizationPercent: 50,
+    });
   }
 }
